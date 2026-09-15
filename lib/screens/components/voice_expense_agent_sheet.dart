@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -82,21 +81,12 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
       _accountTypeExplicitlyChosen = true;
     } else if (widget.accountContext == ExpenseAccountFilter.all) {
       _accountType = 'personal';
-      _accountTypeExplicitlyChosen = false;
+      _accountTypeExplicitlyChosen = true;
     }
     _initSpeech();
   }
 
   Future<void> _initSpeech() async {
-    if (kIsWeb) {
-      if (!mounted) return;
-      setState(() {
-        _isSpeechAvailable = false;
-        _error = 'Voice input isn\'t supported in the web preview. Please test on an Android/iOS build.';
-      });
-      return;
-    }
-
     try {
       final ok = await _speech.initialize(
         onError: (err) => debugPrint('Speech error: $err'),
@@ -123,7 +113,9 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
       await _speech.stop();
       if (!mounted) return;
       setState(() => _isListening = false);
-      await _parseTranscript();
+      if (_transcript.trim().isNotEmpty) {
+        await _parseTranscript();
+      }
       return;
     }
 
@@ -137,7 +129,7 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
         _accountTypeExplicitlyChosen = true;
       } else if (widget.accountContext == ExpenseAccountFilter.all) {
         _accountType = _accountType.isEmpty ? 'personal' : _accountType;
-        _accountTypeExplicitlyChosen = false;
+        _accountTypeExplicitlyChosen = true;
       }
     });
 
@@ -149,10 +141,28 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
     bool didStart = false;
     try {
       didStart = await _speech.listen(
-        listenMode: stt.ListenMode.confirmation,
+        listenOptions: stt.SpeechListenOptions(
+          listenFor: const Duration(seconds: 8),
+          pauseFor: const Duration(seconds: 3),
+          cancelOnError: true,
+          partialResults: true,
+          listenMode: stt.ListenMode.confirmation,
+        ),
         onResult: (result) {
           if (!mounted) return;
-          setState(() => _transcript = result.recognizedWords);
+
+          setState(() => _transcript = result.recognizedWords.trim());
+
+          if (result.finalResult) {
+            Future.microtask(() async {
+              if (!mounted) return;
+              final transcript = _transcript.trim();
+              if (transcript.isEmpty) return;
+              setState(() => _isListening = false);
+              await _speech.stop();
+              await _parseTranscript();
+            });
+          }
         },
       );
     } catch (e, st) {
@@ -282,7 +292,7 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
         _accountTypeExplicitlyChosen = true;
       } else if (widget.accountContext == ExpenseAccountFilter.all) {
         _accountType = 'personal';
-        _accountTypeExplicitlyChosen = false;
+        _accountTypeExplicitlyChosen = true;
       } else {
         _accountType = '';
         _accountTypeExplicitlyChosen = false;

@@ -17,6 +17,7 @@ class _PhoneAuthScreenState extends ConsumerState<PhoneAuthScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
   bool _codeSent = false;
+  bool _autoVerified = false;
   String? _verificationId;
 
   @override
@@ -42,11 +43,17 @@ class _PhoneAuthScreenState extends ConsumerState<PhoneAuthScreen> {
             });
           }
         },
+        verificationCompletedCallback: () async {
+          _autoVerified = true;
+          if (mounted) context.go('/home');
+        },
       );
+
+      if (mounted && _autoVerified) context.go('/home');
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to send OTP: ${e.toString()}'), backgroundColor: AppColors.lossRed),
+          SnackBar(content: Text(AuthService.friendlyAuthError(e)), backgroundColor: AppColors.lossRed),
         );
         setState(() => _isLoading = false);
       }
@@ -54,7 +61,13 @@ class _PhoneAuthScreenState extends ConsumerState<PhoneAuthScreen> {
   }
 
   Future<void> _verifyOTP() async {
-    if (_otpController.text.isEmpty || _verificationId == null) return;
+    if (_verificationId == null) return;
+    if (_otpController.text.trim().length != 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter the 6-digit OTP.'), backgroundColor: AppColors.lossRed),
+      );
+      return;
+    }
 
     setState(() => _isLoading = true);
     try {
@@ -63,7 +76,7 @@ class _PhoneAuthScreenState extends ConsumerState<PhoneAuthScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('OTP verification failed: ${e.toString()}'), backgroundColor: AppColors.lossRed),
+          SnackBar(content: Text(AuthService.friendlyAuthError(e)), backgroundColor: AppColors.lossRed),
         );
       }
     } finally {

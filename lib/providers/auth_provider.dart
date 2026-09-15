@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -55,15 +57,37 @@ class AuthService {
     }
   }
 
-  Future<void> signInWithPhone(String phoneNumber, void Function(String) codeSentCallback) async {
+  Future<void> signInWithPhone(
+    String phoneNumber,
+    void Function(String) codeSentCallback, {
+    Future<void> Function()? verificationCompletedCallback,
+  }) async {
+    final result = Completer<void>();
+
     try {
       await _auth.verifyPhoneNumber(
         phoneNumber: phoneNumber,
-        verificationCompleted: (PhoneAuthCredential credential) async => _auth.signInWithCredential(credential),
-        verificationFailed: (FirebaseAuthException e) => throw e,
-        codeSent: (String verificationId, int? resendToken) => codeSentCallback(verificationId),
+        verificationCompleted: (PhoneAuthCredential credential) async {
+          try {
+            await _auth.signInWithCredential(credential);
+            if (verificationCompletedCallback != null) {
+              await verificationCompletedCallback();
+            }
+            if (!result.isCompleted) result.complete();
+          } catch (e, st) {
+            if (!result.isCompleted) result.completeError(e, st);
+          }
+        },
+        verificationFailed: (FirebaseAuthException e) {
+          if (!result.isCompleted) result.completeError(e);
+        },
+        codeSent: (String verificationId, int? resendToken) {
+          codeSentCallback(verificationId);
+          if (!result.isCompleted) result.complete();
+        },
         codeAutoRetrievalTimeout: (String verificationId) {},
       );
+      await result.future;
     } on FirebaseAuthException {
       rethrow;
     } catch (e) {
@@ -114,6 +138,12 @@ class AuthService {
           return 'Network error. Please check your connection and try again.';
         case 'too-many-requests':
           return 'Too many attempts. Please wait a bit and try again.';
+        case 'invalid-phone-number':
+          return 'Enter a valid phone number with the correct country code.';
+        case 'invalid-verification-code':
+          return 'The OTP is incorrect. Please check it and try again.';
+        case 'session-expired':
+          return 'This OTP has expired. Please request a new OTP.';
         default:
           final msg = error.message?.trim();
           return (msg == null || msg.isEmpty) ? 'Authentication failed. Please try again.' : msg;

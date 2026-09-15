@@ -31,8 +31,8 @@ class OpenAIExpenseNlpService {
     if (trimmed.isEmpty) return OpenAIExpenseExtraction.empty();
 
     if (OpenAIConfig.apiKey.isEmpty || OpenAIConfig.endpoint.isEmpty) {
-      debugPrint('OpenAI config missing: endpoint/apiKey not provided via environment variables.');
-      throw StateError('AI parsing is not configured.');
+      debugPrint('OpenAI config missing: endpoint/apiKey not provided via environment variables. Falling back to local expense parsing.');
+      return _fallbackExtractExpense(trimmed, nowLocal);
     }
 
     final today = DateTime(nowLocal.year, nowLocal.month, nowLocal.day);
@@ -148,6 +148,92 @@ User said: "$trimmed"''';
       date: date,
       accountType: accountType,
     );
+  }
+
+  static OpenAIExpenseExtraction _fallbackExtractExpense(String utterance, DateTime nowLocal) {
+    final amount = _extractAmount(utterance);
+    final category = _fallbackCategory(utterance);
+
+    if (amount == null || category == null) {
+      return OpenAIExpenseExtraction.empty();
+    }
+
+    final accountType = _normalizeAccountType(utterance);
+
+    return OpenAIExpenseExtraction(
+      amount: amount,
+      category: category,
+      note: _buildFallbackNote(utterance, category),
+      date: _fallbackDate(utterance, nowLocal),
+      accountType: accountType,
+    );
+  }
+
+  static double? _extractAmount(String utterance) {
+    final match = RegExp(r'(\d+(?:\.\d+)?)').firstMatch(utterance);
+    if (match == null) return null;
+
+    final value = double.tryParse(match.group(1)!);
+    return value != null && value.isFinite ? value : null;
+  }
+
+  static String? _buildFallbackNote(String utterance, String category) {
+    var note = utterance.trim().toLowerCase();
+
+    final cleanupTokens = <String>[
+      '₹',
+      'rs',
+      'rupees',
+      'rupee',
+      'rupaye',
+      'inr',
+      'today',
+      'yesterday',
+      'tomorrow',
+      'personal',
+      'business',
+      'biz',
+      'office',
+      'company',
+      'mera',
+      'my'
+    ];
+
+    for (final token in cleanupTokens) {
+      note = note.replaceAll(token, ' ');
+    }
+
+    note = note.replaceAll(category.toLowerCase(), ' ');
+    note = note.replaceAll(RegExp(r'\d+(?:\.\d+)?'), ' ');
+    note = note.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+    if (note.isEmpty) return null;
+    return note.length > 60 ? note.substring(0, 60) : note;
+  }
+
+  static String? _fallbackCategory(String utterance) {
+    final lower = utterance.toLowerCase();
+
+    if (lower.contains('snack') || lower.contains('chai') || lower.contains('tea') || lower.contains('coffee')) return 'Snacks';
+    if (lower.contains('food') || lower.contains('khana') || lower.contains('eat') || lower.contains('paneer')) return 'Food';
+    if (lower.contains('trip') || lower.contains('cab') || lower.contains('travel') || lower.contains('uber')) return 'Travel';
+    if (lower.contains('bill') || lower.contains('electric') || lower.contains('recharge') || lower.contains('rent')) return 'Bills';
+    if (lower.contains('shop') || lower.contains('amazon') || lower.contains('flipkart')) return 'Shopping';
+    if (lower.contains('movie') || lower.contains('fun') || lower.contains('party')) return 'Fun';
+    if (lower.contains('doctor') || lower.contains('medicine') || lower.contains('health')) return 'Health';
+
+    return null;
+  }
+
+  static DateTime? _fallbackDate(String utterance, DateTime nowLocal) {
+    final lower = utterance.toLowerCase();
+    final today = DateTime(nowLocal.year, nowLocal.month, nowLocal.day);
+
+    if (lower.contains('today')) return today;
+    if (lower.contains('yesterday')) return today.subtract(const Duration(days: 1));
+    if (lower.contains('tomorrow')) return today.add(const Duration(days: 1));
+
+    return null;
   }
 
   static String? _normalizeCategory(String? raw) {
