@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwnerByField(fieldName) {
+      return signedIn() && resource.data[fieldName] == request.auth.uid;
+    }
+
+    function isOwnerByRequestField(fieldName) {
+      return signedIn() && request.resource.data[fieldName] == request.auth.uid;
+    }
+
+    // Users are stored by uid as the document id.
+    match /users/{uid} {
+      allow get, list: if signedIn() && request.auth.uid == uid;
+
+      allow create: if signedIn() && request.auth.uid == uid && request.resource.data.uid == uid;
+
+      allow update, delete: if signedIn() && request.auth.uid == uid;
+    }
+
+    // Transactions belong to a user via userId field.
+    match /transactions/{transactionId} {
+      allow get, list: if isOwnerByField('userId');
+      allow create: if isOwnerByRequestField('userId');
+      allow update, delete: if isOwnerByField('userId');
+    }
+
+    // Investments belong to a user via userId field.
+    match /investments/{investmentId} {
+      allow get, list: if isOwnerByField('userId');
+      allow create: if isOwnerByRequestField('userId');
+      allow update, delete: if isOwnerByField('userId');
+    }
+
+    // SIPs belong to a user via userId field.
+    match /sips/{sipId} {
+      allow get, list: if isOwnerByField('userId');
+      allow create: if isOwnerByRequestField('userId');
+      allow update, delete: if isOwnerByField('userId');
+    }
+
+    // Default deny.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

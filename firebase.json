@@ -1,0 +1,27 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "payvault-351d7",
+          "appId": "1:962446697416:android:82ce3ac03efde20bc796fd",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "payvault-351d7",
+          "configurations": {
+            "android": "1:962446697416:android:82ce3ac03efde20bc796fd",
+            "ios": "1:962446697416:ios:ae043f4305cd4af1c796fd",
+            "web": "1:962446697416:web:877ab5011d5c7814c796fd"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  }
+}

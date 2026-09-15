@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "962446697416",
+    "project_id": "payvault-351d7",
+    "storage_bucket": "payvault-351d7.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:962446697416:android:82ce3ac03efde20bc796fd",
+        "android_client_info": {
+          "package_name": "com.mycompany.CounterApp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAJEa1jKVMOOqDyI6AbFY7ab8O1QCW2W9U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
