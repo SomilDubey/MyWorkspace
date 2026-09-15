@@ -55,8 +55,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _signInWithGoogle() async {
     setState(() => _isLoading = true);
     try {
-      await ref.read(authServiceProvider).signInWithGoogle();
-      if (mounted) context.go('/home');
+      final credential = await ref.read(authServiceProvider).signInWithGoogle();
+      if (mounted && credential != null) context.go('/home');
     } catch (e) {
       if (!mounted) return;
       final msg = AuthService.friendlyAuthError(e);

@@ -41,6 +41,10 @@ class AuthService {
 
   Future<UserCredential?> signInWithGoogle() async {
     try {
+      if (kIsWeb) {
+        return await _auth.signInWithPopup(GoogleAuthProvider());
+      }
+
       final googleSignIn = GoogleSignIn();
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
       if (googleUser == null) return null;
@@ -109,10 +113,12 @@ class AuthService {
   }
 
   Future<void> signOut() async {
-    try {
-      await GoogleSignIn().signOut();
-    } catch (e) {
-      debugPrint('Google signOut ignored: $e');
+    if (!kIsWeb) {
+      try {
+        await GoogleSignIn().signOut();
+      } catch (e) {
+        debugPrint('Google signOut ignored: $e');
+      }
     }
     await _auth.signOut();
   }
@@ -133,7 +139,10 @@ class AuthService {
         case 'user-disabled':
           return 'This account has been disabled.';
         case 'operation-not-allowed':
-          return 'This sign-in method isn’t enabled yet.';
+          if ((error.message ?? '').toLowerCase().contains('region')) {
+            return 'SMS for India is disabled. In Firebase Console, open Authentication > Settings > SMS region policy and allow India (IN).';
+          }
+          return 'Phone sign-in is disabled. Enable Phone in Firebase Console > Authentication > Sign-in method.';
         case 'network-request-failed':
           return 'Network error. Please check your connection and try again.';
         case 'too-many-requests':

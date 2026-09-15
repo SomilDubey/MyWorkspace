@@ -26,7 +26,7 @@ class AppRouter {
       }
 
       final userDoc = await UserService().getUser(user.uid);
-      final isOnboarded = userDoc != null && userDoc.personalSalary > 0 && userDoc.salaryDate > 0;
+      final isOnboarded = userDoc != null && (userDoc.personalSalary > 0 || userDoc.businessIncome > 0) && userDoc.salaryDate > 0;
       if (kDebugMode) {
         debugPrint('Router redirect: fetched userDoc=${userDoc != null} salary=${userDoc?.monthlySalary} salaryDate=${userDoc?.salaryDate} isOnboarded=$isOnboarded');
       }

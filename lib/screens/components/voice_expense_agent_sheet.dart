@@ -90,7 +90,15 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
     try {
       final ok = await _speech.initialize(
         onError: (err) => debugPrint('Speech error: $err'),
-        onStatus: (status) => debugPrint('Speech status: $status'),
+        onStatus: (status) {
+          debugPrint('Speech status: $status');
+          if (!mounted) return;
+          if (status == 'listening') {
+            setState(() => _isListening = true);
+          } else if (status == 'notListening' || status == 'done') {
+            setState(() => _isListening = false);
+          }
+        },
       );
       if (!mounted) return;
       setState(() {
@@ -140,7 +148,11 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
 
     bool didStart = false;
     try {
-      didStart = await _speech.listen(
+      if (_speech.isListening) {
+        await _speech.stop();
+      }
+
+      await _speech.listen(
         listenOptions: stt.SpeechListenOptions(
           listenFor: const Duration(seconds: 8),
           pauseFor: const Duration(seconds: 3),
@@ -165,6 +177,8 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
           }
         },
       );
+      // speech_to_text web can return null even when recognition started.
+      didStart = true;
     } catch (e, st) {
       debugPrint('Speech listen failed: $e');
       debugPrint('$st');

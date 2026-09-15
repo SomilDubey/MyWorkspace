@@ -22,6 +22,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   int _pageIndex = 0;
   int _selectedDate = 1;
+  String _accountType = 'personal';
   bool _isSaving = false;
 
   @override
@@ -101,8 +102,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         displayName: user.displayName,
         phoneNumber: user.phoneNumber,
         monthlySalary: salary,
-        personalSalary: salary,
-        businessIncome: 0.0,
+        personalSalary: _accountType == 'personal' ? salary : 0.0,
+        businessIncome: _accountType == 'business' ? salary : 0.0,
         salaryDate: _selectedDate,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
@@ -160,6 +161,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     SalaryStep(
                       formKey: _salaryFormKey,
                       controller: _salaryController,
+                      accountType: _accountType,
+                      onAccountTypeChanged: (value) => setState(() => _accountType = value),
                       onNext: _goNext,
                     ),
                     SalaryDateStep(
@@ -233,12 +236,16 @@ class OnboardingCardShell extends StatelessWidget {
 class SalaryStep extends StatelessWidget {
   final GlobalKey<FormState> formKey;
   final TextEditingController controller;
+  final String accountType;
+  final ValueChanged<String> onAccountTypeChanged;
   final VoidCallback onNext;
 
   const SalaryStep(
       {super.key,
       required this.formKey,
       required this.controller,
+      required this.accountType,
+      required this.onAccountTypeChanged,
       required this.onNext});
 
   @override
@@ -268,6 +275,20 @@ class SalaryStep extends StatelessWidget {
                     Text('Amount',
                         style: context.textStyles.titleLarge?.semiBold),
                     const SizedBox(height: 12),
+                    Text('Account type', style: context.textStyles.titleMedium?.semiBold),
+                    const SizedBox(height: 10),
+                    SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment(value: 'personal', label: Text('Personal')),
+                        ButtonSegment(value: 'business', label: Text('Business')),
+                      ],
+                      selected: <String>{accountType},
+                      showSelectedIcon: false,
+                      onSelectionChanged: (selection) {
+                        if (selection.isNotEmpty) onAccountTypeChanged(selection.first);
+                      },
+                    ),
+                    const SizedBox(height: 16),
                     TextFormField(
                       controller: controller,
                       keyboardType: TextInputType.number,

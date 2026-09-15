@@ -1199,15 +1199,20 @@ class _EditIncomeSheetState extends State<EditIncomeSheet> {
 
     final messenger = ScaffoldMessenger.of(widget.rootContext);
 
-    final personal = _parseAmount(_personalController.text);
-    if (personal == null || personal <= 0) {
-      messenger.showSnackBar(const SnackBar(content: Text('Please enter a valid Personal Salary.')));
+    final personal = _parseAmount(_personalController.text) ?? 0.0;
+    if (personal < 0) {
+      messenger.showSnackBar(const SnackBar(content: Text('Personal Salary cannot be negative.')));
       return;
     }
 
     final business = _parseAmount(_businessController.text) ?? 0.0;
     if (business < 0) {
       messenger.showSnackBar(const SnackBar(content: Text('Business Income cannot be negative.')));
+      return;
+    }
+
+    if (personal == 0 && business == 0) {
+      messenger.showSnackBar(const SnackBar(content: Text('Enter a Personal Salary or Business Income greater than 0.')));
       return;
     }
 
