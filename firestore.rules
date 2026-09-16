@@ -20,6 +20,18 @@ service cloud.firestore {
       allow create: if signedIn() && request.auth.uid == uid && request.resource.data.uid == uid;
 
       allow update, delete: if signedIn() && request.auth.uid == uid;
+
+      match /portfolio/{investmentId} {
+        allow read: if signedIn() && request.auth.uid == uid;
+        allow create, update: if signedIn() && request.auth.uid == uid
+          && request.resource.data.userId == uid
+          && !request.resource.data.keys().hasAny(['currentPrice', 'price', 'livePrice']);
+        allow delete: if signedIn() && request.auth.uid == uid;
+      }
+
+      match /watchlist/{symbol} {
+        allow read, write: if signedIn() && request.auth.uid == uid;
+      }
     }
 
     // Transactions belong to a user via userId field.

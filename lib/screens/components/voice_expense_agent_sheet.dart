@@ -46,6 +46,10 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
   String _accountType = '';
   bool _accountTypeExplicitlyChosen = false;
   String? _error;
+  final _amountController = TextEditingController();
+  final _noteController = TextEditingController();
+  String _editedCategory = 'Other';
+  DateTime _editedDate = DateTime.now();
 
   String? get _fixedAccountType => widget.accountContext.fixedAccountType;
 
@@ -56,7 +60,11 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
     return _accountType;
   }
 
-  bool get _needsAccountChoice => widget.accountContext == ExpenseAccountFilter.all && _extraction.isUsable && _extraction.accountType == null && !_accountTypeExplicitlyChosen;
+  bool get _needsAccountChoice =>
+      widget.accountContext == ExpenseAccountFilter.all &&
+      _extraction.isUsable &&
+      _extraction.accountType == null &&
+      !_accountTypeExplicitlyChosen;
 
   bool get _canConfirm => _extraction.isUsable && !_needsAccountChoice;
 
@@ -79,9 +87,6 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
     if (fixed != null) {
       _accountType = fixed;
       _accountTypeExplicitlyChosen = true;
-    } else if (widget.accountContext == ExpenseAccountFilter.all) {
-      _accountType = 'personal';
-      _accountTypeExplicitlyChosen = true;
     }
     _initSpeech();
   }
@@ -103,7 +108,9 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
       if (!mounted) return;
       setState(() {
         _isSpeechAvailable = ok;
-        if (!ok) _error = 'Microphone permission denied or speech not supported on this device.';
+        if (!ok)
+          _error =
+              'Microphone permission denied or speech not supported on this device.';
       });
     } catch (e, st) {
       debugPrint('Speech init failed: $e');
@@ -111,7 +118,8 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
       if (!mounted) return;
       setState(() {
         _isSpeechAvailable = false;
-        _error = 'Could not initialize voice input. Please check microphone permission and try again.';
+        _error =
+            'Could not initialize voice input. Please check microphone permission and try again.';
       });
     }
   }
@@ -135,14 +143,15 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
       if (fixed != null) {
         _accountType = fixed;
         _accountTypeExplicitlyChosen = true;
-      } else if (widget.accountContext == ExpenseAccountFilter.all) {
-        _accountType = _accountType.isEmpty ? 'personal' : _accountType;
-        _accountTypeExplicitlyChosen = true;
       }
+      // Note: when accountContext == all, do NOT force-default to personal here.
+      // The account type must be inferred from speech, or explicitly asked for,
+      // per "Add this to personal or business?" requirement.
     });
 
     if (!_isSpeechAvailable) {
-      setState(() => _error = 'Microphone permission denied or speech not supported.');
+      setState(() =>
+          _error = 'Microphone permission denied or speech not supported.');
       return;
     }
 
@@ -185,7 +194,8 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
       if (!mounted) return;
       setState(() {
         _isListening = false;
-        _error = 'Could not start microphone. Please allow microphone permission and try again.';
+        _error =
+            'Could not start microphone. Please allow microphone permission and try again.';
       });
       return;
     }
@@ -193,7 +203,9 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
     if (!mounted) return;
     setState(() {
       _isListening = didStart;
-      if (!didStart) _error = 'Could not start microphone. Please allow microphone permission and try again.';
+      if (!didStart)
+        _error =
+            'Could not start microphone. Please allow microphone permission and try again.';
     });
   }
 
@@ -211,11 +223,20 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
     });
 
     try {
-      final extraction = await _nlp.extractExpense(utterance: text, nowLocal: DateTime.now());
+      final extraction = _nlp.quickExtractExpense(
+              utterance: text, nowLocal: DateTime.now()) ??
+          await _nlp.extractExpense(utterance: text, nowLocal: DateTime.now());
       if (!mounted) return;
 
       setState(() {
         _extraction = extraction;
+        _amountController.text = extraction.amount
+                ?.toStringAsFixed(2)
+                .replaceFirst(RegExp(r'\.00$'), '') ??
+            '';
+        _noteController.text = extraction.note ?? '';
+        _editedCategory = extraction.category ?? 'Other';
+        _editedDate = extraction.date ?? DateTime.now();
         final fixed = _fixedAccountType;
         if (fixed != null) {
           _accountType = fixed;
@@ -229,10 +250,11 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
         }
 
         if (!extraction.isUsable) {
-          _error = 'Couldn\'t confidently extract amount + category. Try saying: "Food 120 paneer".';
-        } else if (_needsAccountChoice) {
-          _error = 'Personal or Business?';
+          _error =
+              'Couldn\'t confidently extract an amount. Try saying: "120 paneer" or "spent 250".';
         }
+        // When _needsAccountChoice is true, the dedicated "personal or
+        // business?" prompt is rendered in the UI instead of an inline error.
       });
     } catch (e, st) {
       debugPrint('Parse transcript failed: $e');
@@ -250,13 +272,15 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
     final messenger = ScaffoldMessenger.of(widget.rootContext);
 
     if (!_extraction.isUsable) {
-      messenger.showSnackBar(const SnackBar(content: Text('Please try again — missing amount or category.')));
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Please try again — missing amount or category.')));
       return;
     }
 
-    final accountType = _resolvedAccountType;
+    final accountType = _resolvedAccountType?.trim().toLowerCase();
     if (accountType == null) {
-      messenger.showSnackBar(const SnackBar(content: Text('Personal or Business?')));
+      messenger
+          .showSnackBar(const SnackBar(content: Text('Personal or Business?')));
       return;
     }
 
@@ -266,30 +290,42 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw StateError('Not logged in');
 
-      final date = _extraction.date ?? DateTime.now();
+      final amount = double.tryParse(_amountController.text.trim());
+      if (amount == null || amount <= 0 || _editedCategory.trim().isEmpty) {
+        messenger.showSnackBar(const SnackBar(
+            content: Text('Please check the amount and category.')));
+        return;
+      }
+      final date = _editedDate;
       final dateOnly = DateTime(date.year, date.month, date.day);
 
       final data = <String, dynamic>{
-        'amount': _extraction.amount,
-        'category': _extraction.category,
+        'amount': amount,
+        'category': _editedCategory,
         'accountType': accountType,
         'source': 'ai',
         'date': Timestamp.fromDate(dateOnly),
         'createdAt': FieldValue.serverTimestamp(),
       };
-      final note = _extraction.note?.trim();
-      if (note != null && note.isNotEmpty) data['note'] = note;
+      final note = _noteController.text.trim();
+      if (note.isNotEmpty) data['note'] = note;
 
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('expenses').add(data);
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('expenses')
+          .add(data);
 
       if (!mounted) return;
       context.pop();
-      messenger.showSnackBar(const SnackBar(content: Text('Expense added successfully')));
+      messenger.showSnackBar(
+          const SnackBar(content: Text('Expense added successfully')));
     } catch (e, st) {
       debugPrint('Voice save expense failed: $e');
       debugPrint('$st');
       if (!mounted) return;
-      messenger.showSnackBar(const SnackBar(content: Text('Failed to save expense. Please try again.')));
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Failed to save expense. Please try again.')));
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -300,12 +336,13 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
       _error = null;
       _transcript = '';
       _extraction = OpenAIExpenseExtraction.empty();
+      _amountController.clear();
+      _noteController.clear();
+      _editedCategory = 'Other';
+      _editedDate = DateTime.now();
       final fixed = _fixedAccountType;
       if (fixed != null) {
         _accountType = fixed;
-        _accountTypeExplicitlyChosen = true;
-      } else if (widget.accountContext == ExpenseAccountFilter.all) {
-        _accountType = 'personal';
         _accountTypeExplicitlyChosen = true;
       } else {
         _accountType = '';
@@ -317,6 +354,8 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
   @override
   void dispose() {
     _speech.stop();
+    _amountController.dispose();
+    _noteController.dispose();
     super.dispose();
   }
 
@@ -328,7 +367,8 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
       padding: EdgeInsets.only(bottom: bottomInset),
       decoration: BoxDecoration(
         color: Theme.of(context).scaffoldBackgroundColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
+        borderRadius:
+            const BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
         border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
       child: SafeArea(
@@ -344,27 +384,41 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
                   width: 44,
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 18),
-                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.22), borderRadius: BorderRadius.circular(999)),
+                  decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.22),
+                      borderRadius: BorderRadius.circular(999)),
                 ),
               ),
               Row(
                 children: [
-                  Expanded(child: Text('Voice Expense', style: context.textStyles.headlineSmall?.semiBold)),
-                  IconButton(onPressed: () => context.pop(), icon: const Icon(Icons.close_rounded, color: AppColors.textSecondary), tooltip: 'Close'),
+                  Expanded(
+                      child: Text('Voice Expense',
+                          style: context.textStyles.headlineSmall?.semiBold)),
+                  IconButton(
+                      onPressed: () => context.pop(),
+                      icon: const Icon(Icons.close_rounded,
+                          color: AppColors.textSecondary),
+                      tooltip: 'Close'),
                 ],
               ),
               const SizedBox(height: 10),
-              Text('Try: "Add 20 rupees to snacks" • "Business ke liye 180 travel" • "15 chai"', style: context.textStyles.bodyMedium?.withColor(AppColors.textSecondary)),
+              Text(
+                  'Try: "Add 20 rupees to snacks" • "Business ke liye 180 travel" • "15 chai"',
+                  style: context.textStyles.bodyMedium
+                      ?.withColor(AppColors.textSecondary)),
               const SizedBox(height: 16),
               if (widget.accountContext == ExpenseAccountFilter.all) ...[
-                Text('Account Type', style: context.textStyles.titleMedium?.semiBold),
+                Text('Account Type',
+                    style: context.textStyles.titleMedium?.semiBold),
                 const SizedBox(height: 10),
                 SegmentedButton<String>(
                   segments: const [
                     ButtonSegment(value: 'personal', label: Text('Personal')),
                     ButtonSegment(value: 'business', label: Text('Business')),
                   ],
-                  selected: _accountType.isEmpty ? <String>{'personal'} : <String>{_accountType},
+                  selected: _accountType.isEmpty
+                      ? <String>{'personal'}
+                      : <String>{_accountType},
                   showSelectedIcon: false,
                   onSelectionChanged: (s) {
                     if (s.isEmpty) return;
@@ -376,44 +430,82 @@ class _VoiceExpenseAgentSheetState extends State<VoiceExpenseAgentSheet> {
                   },
                   style: ButtonStyle(
                     backgroundColor: WidgetStateProperty.resolveWith((states) {
-                      if (states.contains(WidgetState.selected)) return AppColors.credTeal;
-                      return Theme.of(context).colorScheme.surfaceContainerHighest;
+                      if (states.contains(WidgetState.selected))
+                        return AppColors.credTeal;
+                      return Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest;
                     }),
                     foregroundColor: WidgetStateProperty.resolveWith((states) {
-                      if (states.contains(WidgetState.selected)) return AppColors.darkBackground;
+                      if (states.contains(WidgetState.selected))
+                        return AppColors.darkBackground;
                       return AppColors.textPrimary;
                     }),
-                    side: WidgetStateProperty.all(BorderSide(color: Colors.white.withValues(alpha: 0.10))),
-                    shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(999))),
+                    side: WidgetStateProperty.all(BorderSide(
+                        color: Colors.white.withValues(alpha: 0.10))),
+                    shape: WidgetStateProperty.all(RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(999))),
                   ),
                 ),
                 const SizedBox(height: 18),
               ],
-              _VoiceMicButton(isEnabled: _isSpeechAvailable && !_isParsing && !_isSaving, isListening: _isListening, onPressed: _toggleListening),
+              _VoiceMicButton(
+                  isEnabled: _isSpeechAvailable && !_isParsing && !_isSaving,
+                  isListening: _isListening,
+                  onPressed: _toggleListening),
               const SizedBox(height: 16),
               _TranscriptCard(transcript: _transcript, isBusy: _isParsing),
               if (_error != null) ...[
                 const SizedBox(height: 12),
                 _InlineError(text: _error!),
               ],
+              if (_extraction.isUsable && _needsAccountChoice) ...[
+                const SizedBox(height: 14),
+                _AccountChoicePrompt(
+                  amount: _extraction.amount ?? 0,
+                  onChoose: (type) => setState(() {
+                    _accountType = type;
+                    _accountTypeExplicitlyChosen = true;
+                    _error = null;
+                  }),
+                ),
+              ],
               if (_canConfirm) ...[
                 const SizedBox(height: 14),
-                _CompactConfirmCard(extraction: _extraction, accountType: _resolvedAccountType!, hideAmounts: _hideForConfirmCard),
+                _EditableConfirmForm(
+                  amountController: _amountController,
+                  noteController: _noteController,
+                  category: _editedCategory,
+                  onCategoryChanged: (v) => setState(() => _editedCategory = v),
+                  date: _editedDate,
+                  onDateChanged: (d) => setState(() => _editedDate = d),
+                  accountType: _resolvedAccountType!,
+                  onAccountTypeChanged:
+                      widget.accountContext == ExpenseAccountFilter.all &&
+                              _fixedAccountType == null
+                          ? (v) => setState(() {
+                                _accountType = v;
+                                _accountTypeExplicitlyChosen = true;
+                              })
+                          : null,
+                  hideAmounts: _hideForConfirmCard,
+                ),
                 const SizedBox(height: 14),
                 Row(
                   children: [
                     Expanded(
                       child: OutlinedButton(
                         onPressed: _isSaving ? null : _reset,
-                        style: OutlinedButton.styleFrom(foregroundColor: AppColors.textPrimary),
-                        child: const Text('No'),
+                        style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.textPrimary),
+                        child: const Text('Discard'),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton(
                         onPressed: _isSaving ? null : _saveExtractedExpense,
-                        child: Text(_isSaving ? 'Saving…' : 'Yes'),
+                        child: Text(_isSaving ? 'Saving…' : 'Confirm & Save'),
                       ),
                     ),
                   ],
@@ -433,7 +525,10 @@ class _VoiceMicButton extends StatelessWidget {
   final bool isListening;
   final VoidCallback onPressed;
 
-  const _VoiceMicButton({required this.isEnabled, required this.isListening, required this.onPressed});
+  const _VoiceMicButton(
+      {required this.isEnabled,
+      required this.isListening,
+      required this.onPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -446,7 +541,9 @@ class _VoiceMicButton extends StatelessWidget {
       padding: const EdgeInsets.all(2),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: baseColor.withValues(alpha: isListening ? 0.65 : 0.25), width: 1.2),
+        border: Border.all(
+            color: baseColor.withValues(alpha: isListening ? 0.65 : 0.25),
+            width: 1.2),
       ),
       child: ElevatedButton.icon(
         onPressed: isEnabled ? onPressed : null,
@@ -456,7 +553,8 @@ class _VoiceMicButton extends StatelessWidget {
           shape: const StadiumBorder(),
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
         ),
-        icon: Icon(isListening ? Icons.stop_rounded : Icons.mic_rounded, color: AppColors.darkBackground),
+        icon: Icon(isListening ? Icons.stop_rounded : Icons.mic_rounded,
+            color: AppColors.darkBackground),
         label: Text(isListening ? 'Stop listening' : 'Start listening'),
       ),
     );
@@ -471,7 +569,9 @@ class _TranscriptCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text = transcript.trim().isEmpty ? 'Transcript will appear here…' : transcript.trim();
+    final text = transcript.trim().isEmpty
+        ? 'Transcript will appear here…'
+        : transcript.trim();
 
     return Container(
       padding: AppSpacing.paddingMd,
@@ -483,33 +583,33 @@ class _TranscriptCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(isBusy ? Icons.auto_awesome_rounded : Icons.record_voice_over_rounded, color: AppColors.credTeal),
+          Icon(
+              isBusy
+                  ? Icons.auto_awesome_rounded
+                  : Icons.record_voice_over_rounded,
+              color: AppColors.credTeal),
           const SizedBox(width: 10),
-          Expanded(child: Text(text, style: context.textStyles.bodyMedium?.semiBold, softWrap: true)),
+          Expanded(
+              child: Text(text,
+                  style: context.textStyles.bodyMedium?.semiBold,
+                  softWrap: true)),
         ],
       ),
     );
   }
 }
 
-class _CompactConfirmCard extends StatelessWidget {
-  final OpenAIExpenseExtraction extraction;
-  final String accountType;
-  final bool hideAmounts;
+/// Explicit "Personal or Business?" prompt shown when an amount was detected
+/// via speech but no account section could be inferred.
+class _AccountChoicePrompt extends StatelessWidget {
+  final double amount;
+  final ValueChanged<String> onChoose;
 
-  const _CompactConfirmCard({required this.extraction, required this.accountType, required this.hideAmounts});
+  const _AccountChoicePrompt({required this.amount, required this.onChoose});
 
   @override
   Widget build(BuildContext context) {
-    final amountText = hideAmounts ? '₹••••' : CurrencyFormatter.format(extraction.amount ?? 0);
-    final acct = accountType == 'business' ? 'Business' : 'Personal';
-    final category = extraction.category ?? '—';
-
-    final note = extraction.note?.trim();
-    final noteSuffix = (note == null || note.isEmpty) ? '' : ' • ${note[0].toUpperCase()}${note.substring(1)}';
-
-    final date = extraction.date ?? DateTime.now();
-    final dateText = DateFormat('d MMM').format(date);
+    final amountText = CurrencyFormatter.format(amount);
 
     return Container(
       padding: AppSpacing.paddingMd,
@@ -521,9 +621,169 @@ class _CompactConfirmCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Add $amountText to $acct → $category?$noteSuffix', style: context.textStyles.titleMedium?.semiBold),
-          const SizedBox(height: 8),
-          Text('Date: $dateText', style: context.textStyles.bodySmall?.withColor(AppColors.textSecondary)),
+          Text('Got it — $amountText detected.',
+              style: context.textStyles.bodyMedium
+                  ?.withColor(AppColors.textSecondary)),
+          const SizedBox(height: 6),
+          Text('Add this to personal or business?',
+              style: context.textStyles.titleMedium?.semiBold),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => onChoose('personal'),
+                  style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.textPrimary),
+                  child: const Text('Personal'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => onChoose('business'),
+                  child: const Text('Business'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Editable confirmation form shown before saving, so the user can correct
+/// the amount, category, note, date or account type extracted from speech.
+class _EditableConfirmForm extends StatelessWidget {
+  final TextEditingController amountController;
+  final TextEditingController noteController;
+  final String category;
+  final ValueChanged<String> onCategoryChanged;
+  final DateTime date;
+  final ValueChanged<DateTime> onDateChanged;
+  final String accountType;
+  final ValueChanged<String>? onAccountTypeChanged;
+  final bool hideAmounts;
+
+  const _EditableConfirmForm({
+    required this.amountController,
+    required this.noteController,
+    required this.category,
+    required this.onCategoryChanged,
+    required this.date,
+    required this.onDateChanged,
+    required this.accountType,
+    required this.onAccountTypeChanged,
+    required this.hideAmounts,
+  });
+
+  Future<void> _pickDate(BuildContext context) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: date,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+    );
+    if (picked != null) onDateChanged(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final categories = OpenAIExpenseNlpService.allowedCategories;
+    final acctLabel = accountType == 'business' ? 'Business' : 'Personal';
+
+    return Container(
+      padding: AppSpacing.paddingMd,
+      decoration: BoxDecoration(
+        color: AppColors.credTeal.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.credTeal.withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Confirm expense',
+              style: context.textStyles.titleMedium?.semiBold),
+          if (hideAmounts) ...[
+            const SizedBox(height: 4),
+            Text(
+                'Amounts are hidden elsewhere, but shown here so you can confirm before saving.',
+                style: context.textStyles.bodySmall
+                    ?.withColor(AppColors.textSecondary)),
+          ],
+          const SizedBox(height: 12),
+          TextField(
+            controller: amountController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: context.textStyles.titleMedium,
+            decoration: const InputDecoration(
+              prefixText: '₹ ',
+              labelText: 'Amount',
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: categories.contains(category) ? category : 'Other',
+            items: categories
+                .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                .toList(),
+            onChanged: (v) {
+              if (v != null) onCategoryChanged(v);
+            },
+            decoration: const InputDecoration(
+                labelText: 'Category',
+                isDense: true,
+                border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: noteController,
+            style: context.textStyles.bodyMedium,
+            decoration: const InputDecoration(
+                labelText: 'Note (optional)',
+                isDense: true,
+                border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 12),
+          InkWell(
+            onTap: () => _pickDate(context),
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            child: InputDecorator(
+              decoration: const InputDecoration(
+                  labelText: 'Date',
+                  isDense: true,
+                  border: OutlineInputBorder()),
+              child: Row(
+                children: [
+                  Expanded(child: Text(DateFormat('d MMM yyyy').format(date))),
+                  const Icon(Icons.calendar_today_rounded,
+                      size: 16, color: AppColors.textSecondary),
+                ],
+              ),
+            ),
+          ),
+          if (onAccountTypeChanged != null) ...[
+            const SizedBox(height: 12),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'personal', label: Text('Personal')),
+                ButtonSegment(value: 'business', label: Text('Business')),
+              ],
+              selected: <String>{accountType},
+              showSelectedIcon: false,
+              onSelectionChanged: (s) {
+                if (s.isNotEmpty) onAccountTypeChanged!(s.first);
+              },
+            ),
+          ] else ...[
+            const SizedBox(height: 8),
+            Text('Account: $acctLabel',
+                style: context.textStyles.bodySmall
+                    ?.withColor(AppColors.textSecondary)),
+          ],
         ],
       ),
     );
@@ -546,9 +806,13 @@ class _InlineError extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline_rounded, color: AppColors.lossRed, size: 18),
+          const Icon(Icons.error_outline_rounded,
+              color: AppColors.lossRed, size: 18),
           const SizedBox(width: 8),
-          Expanded(child: Text(text, style: context.textStyles.bodySmall?.withColor(AppColors.lossRed))),
+          Expanded(
+              child: Text(text,
+                  style: context.textStyles.bodySmall
+                      ?.withColor(AppColors.lossRed))),
         ],
       ),
     );

@@ -5,68 +5,44 @@ class InvestmentModel {
   final String userId;
   final String stockSymbol;
   final int quantity;
-  final double averagePrice;
-  final double currentPrice;
-  final DateTime createdAt;
-  final DateTime updatedAt;
+  final double buyPrice;
+  final DateTime buyDate;
 
   InvestmentModel({
     required this.id,
     required this.userId,
     required this.stockSymbol,
     required this.quantity,
-    required this.averagePrice,
-    required this.currentPrice,
-    required this.createdAt,
-    required this.updatedAt,
+    required this.buyPrice,
+    required this.buyDate,
   });
 
-  double get totalInvested => quantity * averagePrice;
-  double get currentValue => quantity * currentPrice;
-  double get profitLoss => currentValue - totalInvested;
-  double get profitLossPercentage => (profitLoss / totalInvested) * 100;
+  double get totalInvested => quantity * buyPrice;
 
-  Map<String, dynamic> toJson() => {
+  Map<String, dynamic> toFirestore() => {
     'id': id,
     'userId': userId,
     'stockSymbol': stockSymbol,
     'quantity': quantity,
-    'averagePrice': averagePrice,
-    'currentPrice': currentPrice,
-    'createdAt': Timestamp.fromDate(createdAt),
-    'updatedAt': Timestamp.fromDate(updatedAt),
+    'buyPrice': buyPrice,
+    'buyDate': Timestamp.fromDate(buyDate),
   };
 
-  factory InvestmentModel.fromJson(Map<String, dynamic> json) => InvestmentModel(
-    id: json['id'] as String,
-    userId: json['userId'] as String,
-    stockSymbol: json['stockSymbol'] as String,
-    quantity: json['quantity'] as int,
-    averagePrice: (json['averagePrice'] as num).toDouble(),
-    currentPrice: (json['currentPrice'] as num).toDouble(),
-    createdAt: (json['createdAt'] as Timestamp).toDate(),
-    updatedAt: (json['updatedAt'] as Timestamp).toDate(),
-  );
-
-  InvestmentModel copyWith({
-    String? id,
-    String? userId,
-    String? stockSymbol,
-    int? quantity,
-    double? averagePrice,
-    double? currentPrice,
-    DateTime? createdAt,
-    DateTime? updatedAt,
-  }) => InvestmentModel(
-    id: id ?? this.id,
-    userId: userId ?? this.userId,
-    stockSymbol: stockSymbol ?? this.stockSymbol,
-    quantity: quantity ?? this.quantity,
-    averagePrice: averagePrice ?? this.averagePrice,
-    currentPrice: currentPrice ?? this.currentPrice,
-    createdAt: createdAt ?? this.createdAt,
-    updatedAt: updatedAt ?? this.updatedAt,
-  );
+  factory InvestmentModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final json = doc.data() ?? {};
+    final rawDate = json['buyDate'] ?? json['createdAt'];
+    final buyDate = rawDate is Timestamp
+        ? rawDate.toDate()
+        : DateTime.tryParse(rawDate?.toString() ?? '') ?? DateTime.now();
+    return InvestmentModel(
+      id: doc.id,
+      userId: (json['userId'] ?? '') as String,
+      stockSymbol: (json['stockSymbol'] ?? '') as String,
+      quantity: (json['quantity'] as num?)?.toInt() ?? 0,
+      buyPrice: ((json['buyPrice'] ?? json['averagePrice'] ?? 0) as num).toDouble(),
+      buyDate: buyDate,
+    );
+  }
 }
 
 class SIPModel {

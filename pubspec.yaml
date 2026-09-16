@@ -24,6 +24,8 @@ dependencies:
   candlesticks: ^3.0.0
   speech_to_text: ^7.4.0
   http: ^1.6.0
+  url_launcher: ^6.3.2
+  flutter_dotenv: ^5.2.1
 
 dev_dependencies:
   flutter_test:
@@ -33,6 +35,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - .env
 
 flutter_launcher_icons:
   android: true

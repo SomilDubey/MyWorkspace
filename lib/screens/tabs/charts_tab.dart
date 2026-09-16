@@ -1,144 +1,80 @@
+import 'dart:async';
+
+import 'package:candlesticks/candlesticks.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:candlesticks/candlesticks.dart';
+import 'package:pocket_guard/models/market_quote.dart';
+import 'package:pocket_guard/services/market_data_service.dart';
 import 'package:pocket_guard/theme.dart';
+
+final chartsMarketDataServiceProvider = Provider((ref) => MarketDataService());
 
 class ChartsTab extends ConsumerStatefulWidget {
   const ChartsTab({super.key});
-
-  @override
-  ConsumerState<ChartsTab> createState() => _ChartsTabState();
+  @override ConsumerState<ChartsTab> createState() => _ChartsTabState();
 }
 
 class _ChartsTabState extends ConsumerState<ChartsTab> {
-  String _selectedTimeframe = '1D';
+  final _search = TextEditingController(text: 'RELIANCE');
+  Timer? _searchTimer;
+  String _timeframe = '1D';
+  MarketSeries? _series;
+  List<MarketQuote> _results = [];
+  bool _loading = true;
+  String? _error;
 
   @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: AppSpacing.paddingMd,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('NIFTY 50', style: context.textStyles.headlineMedium?.extraBold),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.profitGreen.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(AppRadius.md),
-                ),
-                child: Text('+2.34%', style: context.textStyles.titleMedium?.semiBold.withColor(AppColors.profitGreen)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text('₹21,450.75', style: context.textStyles.displayLarge?.withSize(36)),
-          const SizedBox(height: 16),
-          Row(
-            children: ['1D', '1W', '1M', '1Y'].map((timeframe) {
-              final isSelected = _selectedTimeframe == timeframe;
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  label: Text(timeframe),
-                  selected: isSelected,
-                  onSelected: (selected) => setState(() => _selectedTimeframe = timeframe),
-                  selectedColor: AppColors.credTeal,
-                  labelStyle: context.textStyles.bodySmall?.semiBold.withColor(isSelected ? AppColors.darkBackground : AppColors.textPrimary),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 16),
-          Card(
-            child: SizedBox(
-              height: 400,
-              child: Candlesticks(
-                candles: _generateDummyCandles(),
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          Text('AI Signals', style: context.textStyles.headlineMedium?.semiBold),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildSignalChip(context, 'Breakout', AppColors.profitGreen),
-              _buildSignalChip(context, 'Support Zone', AppColors.credTeal),
-              _buildSignalChip(context, 'Averaging Zone', Colors.amber),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Text('Market News', style: context.textStyles.headlineMedium?.semiBold),
-          const SizedBox(height: 12),
-          _buildNewsCard(context, 'Markets rally on strong Q4 earnings', '2 hours ago'),
-          _buildNewsCard(context, 'RBI maintains repo rate at 6.5%', '5 hours ago'),
-          _buildNewsCard(context, 'IT sector sees surge in global demand', '1 day ago'),
-        ],
-      ),
-    );
+  void initState() {
+    super.initState();
+    _loadSeries('RELIANCE');
   }
 
-  List<Candle> _generateDummyCandles() {
-    final now = DateTime.now();
-    return List.generate(50, (index) {
-      final date = now.subtract(Duration(days: 50 - index));
-      final open = 21000 + (index * 10).toDouble();
-      final close = open + (index % 2 == 0 ? 50 : -50);
-      final high = open > close ? open + 30 : close + 30;
-      final low = open < close ? open - 30 : close - 30;
-      
-      return Candle(
-        date: date,
-        open: open,
-        high: high,
-        low: low,
-        close: close,
-        volume: 1000000 + (index * 10000).toDouble(),
-      );
+  @override
+  void dispose() { _searchTimer?.cancel(); _search.dispose(); super.dispose(); }
+
+  Future<void> _loadSeries(String symbol) async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final data = await ref.read(chartsMarketDataServiceProvider).series(symbol, timeframe: _timeframe);
+      if (mounted) setState(() { _series = data; _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() { _loading = false; _error = 'Unable to load chart data'; });
+    }
+  }
+
+  void _searchStocks(String value) {
+    _searchTimer?.cancel();
+    _searchTimer = Timer(const Duration(milliseconds: 350), () async {
+      final results = await ref.read(chartsMarketDataServiceProvider).search(value);
+      if (mounted) setState(() => _results = results);
     });
   }
 
-  Widget _buildSignalChip(BuildContext context, String label, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.auto_awesome, color: color, size: 18),
-          const SizedBox(width: 8),
-          Text(label, style: context.textStyles.bodyMedium?.semiBold.withColor(color)),
-        ],
-      ),
-    );
+  @override
+  Widget build(BuildContext context) {
+    final series = _series;
+    final quote = series?.quote;
+    final bars = series?.bars ?? const <MarketBar>[];
+    final candles = bars.map((bar) => Candle(date: bar.date, open: bar.open, high: bar.high, low: bar.low, close: bar.close, volume: bar.volume)).toList();
+    final change = quote?.changePercent ?? 0;
+    return ListView(padding: AppSpacing.paddingMd, children: [
+      Text('Market Charts', style: context.textStyles.headlineMedium?.extraBold),
+      const SizedBox(height: 14),
+      TextField(controller: _search, onChanged: (value) { setState(() {}); _searchStocks(value); }, onSubmitted: (value) => _loadSeries(value.trim().toUpperCase()), decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search any NSE or BSE stock')),
+      if (_search.text.isNotEmpty && _results.isNotEmpty) Card(child: Column(children: _results.take(6).map((item) => ListTile(leading: _badge(item.exchange), title: Text(item.companyName), subtitle: Text(item.symbol), trailing: Text('₹${item.price.toStringAsFixed(2)}'), onTap: () { _search.text = item.symbol; _results = []; _loadSeries(item.symbol); setState(() {}); })).toList())),
+      const SizedBox(height: 18),
+      if (quote != null) ...[
+        Row(children: [Expanded(child: Text('${quote.companyName} (${quote.exchange})', style: context.textStyles.titleLarge?.extraBold)), Text('${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}%', style: context.textStyles.titleMedium?.semiBold.withColor(change >= 0 ? AppColors.profitGreen : AppColors.lossRed))]),
+        const SizedBox(height: 6),
+        Text('₹${quote.price.toStringAsFixed(2)}', style: context.textStyles.displayLarge?.withSize(34)),
+        if (bars.isNotEmpty) Text('High ₹${bars.map((b) => b.high).reduce((a, b) => a > b ? a : b).toStringAsFixed(2)}  •  Low ₹${bars.map((b) => b.low).reduce((a, b) => a < b ? a : b).toStringAsFixed(2)}', style: context.textStyles.bodySmall?.withColor(AppColors.textSecondary)),
+      ],
+      const SizedBox(height: 14),
+      Row(children: ['1D', '1W', '1M', '3M', '1Y', '5Y'].map((value) => Padding(padding: const EdgeInsets.only(right: 8), child: ChoiceChip(label: Text(value), selected: _timeframe == value, selectedColor: AppColors.credTeal, onSelected: (_) { setState(() => _timeframe = value); _loadSeries(_search.text.trim().toUpperCase()); }, labelStyle: context.textStyles.bodySmall?.withColor(_timeframe == value ? AppColors.darkBackground : Theme.of(context).colorScheme.onSurface)))).toList()),
+      const SizedBox(height: 14),
+      Card(child: SizedBox(height: 400, child: _loading ? const Center(child: CircularProgressIndicator()) : candles.isEmpty ? Center(child: Text(_error ?? 'No chart data available')) : Candlesticks(candles: candles))),
+    ]);
   }
 
-  Widget _buildNewsCard(BuildContext context, String title, String time) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: AppColors.credTeal.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(AppRadius.md),
-          ),
-          child: const Icon(Icons.article_outlined, color: AppColors.credTeal, size: 24),
-        ),
-        title: Text(title, style: context.textStyles.titleMedium),
-        subtitle: Text(time, style: context.textStyles.bodySmall?.withColor(AppColors.textSecondary)),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.textSecondary),
-      ),
-    );
-  }
+  Widget _badge(String exchange) => Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: AppColors.credTeal.withValues(alpha: .12), borderRadius: BorderRadius.circular(6)), child: Text(exchange, style: const TextStyle(fontSize: 10, color: AppColors.credTeal, fontWeight: FontWeight.w700)));
 }

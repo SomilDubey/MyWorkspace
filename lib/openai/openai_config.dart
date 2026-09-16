@@ -24,7 +24,20 @@ class OpenAIExpenseExtraction {
 }
 
 class OpenAIExpenseNlpService {
-  static const List<String> allowedCategories = ['Food', 'Snacks', 'Travel', 'Bills', 'Shopping', 'Fun', 'Health'];
+  static const List<String> allowedCategories = ['Food', 'Snacks', 'Travel', 'Bills', 'Shopping', 'Fun', 'Health', 'Other'];
+
+  OpenAIExpenseExtraction? quickExtractExpense({required String utterance, required DateTime nowLocal}) {
+    final amount = _extractAmount(utterance);
+    if (amount == null) return null;
+    final category = _fallbackCategory(utterance) ?? 'Other';
+    return OpenAIExpenseExtraction(
+      amount: amount,
+      category: category,
+      note: _buildFallbackNote(utterance, category),
+      date: _fallbackDate(utterance, nowLocal),
+      accountType: _normalizeAccountType(utterance),
+    );
+  }
 
   Future<OpenAIExpenseExtraction> extractExpense({required String utterance, required DateTime nowLocal}) async {
     final trimmed = utterance.trim();
@@ -154,7 +167,7 @@ User said: "$trimmed"''';
     final amount = _extractAmount(utterance);
     final category = _fallbackCategory(utterance);
 
-    if (amount == null || category == null) {
+    if (amount == null) {
       return OpenAIExpenseExtraction.empty();
     }
 
@@ -162,8 +175,8 @@ User said: "$trimmed"''';
 
     return OpenAIExpenseExtraction(
       amount: amount,
-      category: category,
-      note: _buildFallbackNote(utterance, category),
+      category: category ?? 'Other',
+      note: _buildFallbackNote(utterance, category ?? 'Other'),
       date: _fallbackDate(utterance, nowLocal),
       accountType: accountType,
     );
@@ -222,7 +235,7 @@ User said: "$trimmed"''';
     if (lower.contains('movie') || lower.contains('fun') || lower.contains('party')) return 'Fun';
     if (lower.contains('doctor') || lower.contains('medicine') || lower.contains('health')) return 'Health';
 
-    return null;
+    return 'Other';
   }
 
   static DateTime? _fallbackDate(String utterance, DateTime nowLocal) {
